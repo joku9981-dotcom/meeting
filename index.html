@@ -157,10 +157,18 @@ textarea{ resize:vertical; min-height:68px; }
 .seg .err{ font:400 14px/1.4 var(--f-ui); color:var(--ink-3); }
 
 .live{
-  margin-top:14px; padding:6px 0 6px 12px; border-left:3px solid var(--run);
-  color:var(--ink-2); font-size:calc(var(--tr-size) * .76); line-height:1.45; min-height:2.2em; overflow-wrap:anywhere;
+  margin-top:2px; padding:2px 0 8px; color:var(--ink-3);
+  font-size:calc(var(--tr-size) * .7); line-height:1.45; min-height:1.6em; overflow-wrap:anywhere;
 }
+.live.big{ font-size:calc(var(--tr-size) * .86); }
 .live .idle{ color:var(--ink-3); }
+.live .caret{
+  display:inline-block; width:.45em; height:1em; margin-left:3px; vertical-align:-.14em;
+  background:var(--run); border-radius:1px; animation: caret 1.1s steps(1) infinite;
+}
+@keyframes caret{ 50%{ opacity:0; } }
+.seg.fresh{ animation: settle .4s ease-out; }
+@keyframes settle{ from{ opacity:.3; } }
 
 .jump{
   position:absolute; right:16px; bottom:14px;
@@ -315,7 +323,7 @@ input.key{
         <p class="fine">語音由手機內建的辨識服務轉成文字，再用你的 API 金鑰交給 Claude 翻譯。金鑰只存在這個瀏覽器裡。機密會議請先確認公司規定。</p>
       </section>
       <div id="transcript"></div>
-      <div id="live" class="live" hidden><span id="liveText"></span></div>
+      <div id="live" class="live" hidden><span id="liveText"></span><span class="caret" aria-hidden="true"></span></div>
     </div>
   </main>
   <button id="jump" class="jump" type="button" hidden>跳到最新</button>
@@ -479,16 +487,27 @@ function stamp() {
 
 /* ================= UI helpers ================= */
 const scroller = $('scroller');
-let stick = true, scrollQueued = false;
+let stick = true, scrollQueued = false, autoScrollUntil = 0;
+const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 scroller.addEventListener('scroll', () => {
   const near = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 72;
+  if (!near && Date.now() < autoScrollUntil) return;   // our own smooth scroll is still moving
   stick = near;
   $('jump').hidden = near || !segments.length;
 }, { passive:true });
+['touchstart', 'wheel', 'mousedown'].forEach(ev => scroller.addEventListener(ev, () => { autoScrollUntil = 0; }, { passive:true }));
 function scheduleScroll() {
   if (scrollQueued) return;
   scrollQueued = true;
-  requestAnimationFrame(() => { scrollQueued = false; if (stick) scroller.scrollTop = scroller.scrollHeight; });
+  requestAnimationFrame(() => {
+    scrollQueued = false;
+    if (!stick) return;
+    const target = scroller.scrollHeight - scroller.clientHeight;
+    if (Math.abs(target - scroller.scrollTop) < 2) return;
+    if (reduceMotion || !booted) { scroller.scrollTop = target; return; }
+    autoScrollUntil = Date.now() + 700;
+    scroller.scrollTo({ top: target, behavior:'smooth' });
+  });
 }
 $('jump').addEventListener('click', () => { stick = true; scroller.scrollTo({ top: scroller.scrollHeight, behavior:'smooth' }); });
 
@@ -532,6 +551,7 @@ function applyLang() {
 
 /* ================= transcript rendering ================= */
 const segEls = new Map();
+let booted = false;
 function computeShowTime(i) {
   const s = segments[i], p = segments[i - 1];
   s.showTime = !p || fmtTime(p.t) !== fmtTime(s.t);
@@ -543,6 +563,7 @@ function renderSeg(seg) {
     el = document.createElement('article');
     el.className = 'seg';
     el.innerHTML = '<div class="time"></div><p class="tr"></p><p class="src"></p>';
+    if (booted) { el.classList.add('fresh'); el.addEventListener('animationend', () => el.classList.remove('fresh'), { once:true }); }
     segEls.set(seg.id, el);
     $('transcript').appendChild(el);
   }
@@ -686,12 +707,18 @@ function classify(e) {
 function addText(text, lang) {
   text = clean(text);
   if (!text) return;
+  const now = Date.now();
   const last = segments[segments.length - 1];
-  if (last && last.status === 'queued' && last.srcLang === lang && last.tgt === settings.tgt && (last.src.length + text.length) < 420) {
+  const same = last && last.srcLang === lang && last.tgt === settings.tgt;
+  const joinQueued = same && last.status === 'queued' && (last.src.length + text.length) < 420;
+  const joinOff = same && last.status === 'off' && now - (last.u || last.t) < 6000 &&
+    (last.src.length + text.length) < 300 && !/[.?!\u3002\uff1f\uff01]$/.test(last.src);
+  if (joinQueued || joinOff) {
     last.src = join(last.src, text);
+    last.u = now;
     renderSeg(last);
   } else {
-    const seg = { id: ++seq, t: Date.now(), src: text, tr: '', status: translatorState === 'ready' ? 'queued' : 'off', srcLang: lang, tgt: settings.tgt };
+    const seg = { id: ++seq, t: now, u: now, src: text, tr: '', status: translatorState === 'ready' ? 'queued' : 'off', srcLang: lang, tgt: settings.tgt };
     segments.push(seg);
     computeShowTime(segments.length - 1);
     renderSeg(seg);
@@ -700,6 +727,7 @@ function addText(text, lang) {
   saveSegs();
   pump();
   scheduleScroll();
+
 }
 
 function buildPrompt(seg) {
@@ -919,18 +947,25 @@ function pulse() {
   clearTimeout(hearT);
   hearT = setTimeout(() => l.classList.remove('hearing'), 600);
 }
+let liveT = 0, liveAt = 0;
+function scheduleLive() {
+  const wait = 250 - (Date.now() - liveAt);
+  if (wait <= 0) { renderLive(); return; }
+  if (!liveT) liveT = setTimeout(renderLive, wait);
+}
 function renderLive() {
+  clearTimeout(liveT); liveT = 0; liveAt = Date.now();
   const live = $('live'), lt = $('liveText');
   live.hidden = !listening;
   if (!listening) return;
+  live.classList.toggle('big', translatorState !== 'ready');
   const t = sess && sess.interim;
   if (t) { lt.textContent = t; lt.className = ''; }
-  else {
-    lt.textContent = status === 'listening' ? '聆聽中…' : (status === 'paused' ? '已暫停' : '準備中…');
-    lt.className = 'idle';
-  }
+  else if (status === 'listening') { lt.textContent = ''; lt.className = 'idle'; }
+  else { lt.textContent = status === 'paused' ? '已暫停' : '準備中…'; lt.className = 'idle'; }
   live.lang = (sess && sess.lang) || settings.src;
   scheduleScroll();
+
 }
 
 function startListening() {
@@ -988,6 +1023,7 @@ function onResult(e, s) {
   s.heard = true; everHeard = true; fails = 0; netFails = 0;
   if (status !== 'listening') setStatus('listening');
   const res = e.results;
+  const before = segments.length;
   let interim = '';
   for (let i = 0; i < res.length; i++) {
     if (s.done.has(i)) continue;
@@ -998,8 +1034,9 @@ function onResult(e, s) {
   }
   interim = visibleInterim(interim, s);
   if (interim !== s.interim) { s.interim = interim; s.changed = Date.now(); }
-  renderLive();
+  if (!interim || segments.length !== before) renderLive(); else scheduleLive();
   pulse();
+
 }
 
 /* Some engines repeat text that was already committed (iOS keeps the whole session, some
@@ -1369,6 +1406,7 @@ $('ctx').addEventListener('input', (e) => { settings.ctx = e.target.value; saveS
   }
   $('apiKey').value = apiKey;
   if (segments.length) requestAnimationFrame(() => { scroller.scrollTop = scroller.scrollHeight; });
+  booted = true;
 })();
 })();
 </script>
