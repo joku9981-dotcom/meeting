@@ -358,7 +358,7 @@ input.key{
   <div class="rows">
     <button type="button" id="actClear" class="row danger">清除紀錄</button>
   </div>
-  <p class="ver">版本 1.1</p>
+  <p class="ver">版本 1.2</p>
 </section>
 
 <section id="sumSheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sumTitle" hidden>
@@ -1043,34 +1043,76 @@ function onResult(e, s) {
 
 /* Some engines repeat text that was already committed (iOS keeps the whole session, some
    Android builds send duplicate finals). Strip what we already have before showing/committing. */
+/* ---- repeat detection ----
+   Some phones (seen on Android Chrome) re-send everything heard so far, sometimes with a word or two
+   re-recognized, and even across restarts. Compare each new line with what was committed recently
+   and keep only the part that is actually new. */
+const TOK_RE = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]|[^\s\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]+/g;
+function toks(t) { return (clean(t).match(TOK_RE) || []).map(norm).filter(Boolean); }
+function rawAfter(t, k) {
+  const raw = clean(t), re = new RegExp(TOK_RE.source, 'g');
+  let m, count = 0;
+  while ((m = re.exec(raw))) {
+    if (count >= k) return raw.slice(m.index).replace(/^[\s.,!?;:\u3002\uff0c\uff01\uff1f\uff1b\uff1a\u3001\u2026-]+/, '').trim();
+    if (norm(m[0])) count++;
+  }
+  return '';
+}
+/* only long repeats may differ by a re-recognized word; short lines must match exactly,
+   so a new sentence that differs by one word from the last one is never dropped */
+const fuzz = (n) => n < 12 ? 0 : Math.floor(n * 0.1);
+/* how many leading tokens of w repeat the tail of r (0 = none) */
+function repeatedLead(r, w) {
+  const L = r.length, W = Math.min(w.length, L + 8);
+  if (L < 4 || W < 4) return 0;
+  let prev = [];
+  for (let j = 0; j <= W; j++) prev[j] = j;
+  for (let i = 1; i <= L; i++) {
+    const cur = [0];
+    for (let j = 1; j <= W; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (r[i - 1] === w[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  let best = 0, bestD = Infinity;
+  for (let j = 4; j <= W; j++) if (prev[j] <= fuzz(j) && prev[j] < bestD) { bestD = prev[j]; best = j; }
+  return best;
+}
+/* is all of w already somewhere inside r */
+function containedIn(r, w) {
+  const L = r.length, W = w.length;
+  if (W < 3 || L < W) return false;
+  let prev = [], best = W;
+  for (let j = 0; j <= W; j++) prev[j] = j;
+  for (let i = 1; i <= L; i++) {
+    const cur = [0];
+    for (let j = 1; j <= W; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (r[i - 1] === w[j - 1] ? 0 : 1));
+    if (cur[W] < best) best = cur[W];
+    prev = cur;
+  }
+  return best === 0;
+}
+let recent = [], recentAt = 0;
+function onlyNew(text) {
+  if (!recent.length || Date.now() - recentAt > 20000) return text;
+  const w = toks(text);
+  if (!w.length) return '';
+  const k = repeatedLead(recent, w);           // repeat of the latest words: keep only what follows
+  if (k) return k >= w.length ? '' : rawAfter(text, k);
+  return containedIn(recent, w) ? '' : text;   // an older line sent again
+}
+
 function visibleInterim(t, s) {
-  if (!t) return '';
-  if (s.all.length >= 8) { const r = stripPrefix(t, s.all); if (r !== null) return r; }
-  const last = s.finals[s.finals.length - 1];
-  if (last && last.length >= 8) { const r = stripPrefix(t, last); if (r !== null) return r; }
-  return clean(t);
+  return t ? clean(onlyNew(t)) : '';
 }
 
 function commit(raw, s) {
-  let text = clean(raw), n = norm(text);
-  if (!n) return;
   const now = Date.now();
+  if (now - recentAt > 20000) recent = [];
+  const text = clean(onlyNew(clean(raw)));
+  const n = norm(text);
+  if (!n) { if (recent.length) recentAt = now; return; }
   if (n === lastCommit.n && now - lastCommit.at < 4000) return;
-  if (s.all) {
-    if (n.length >= 12 && s.all.includes(n)) return;
-    const last = s.finals[s.finals.length - 1];
-    let rest = null;
-    if (s.all.length >= 8 && n.startsWith(s.all)) rest = stripPrefix(text, s.all);
-    else if (last && last.length >= 8 && n.startsWith(last)) rest = stripPrefix(text, last);
-    if (rest !== null) {
-      if (!rest) return;
-      text = rest; n = norm(text);
-      if (!n) return;
-    }
-  }
-  s.finals.push(n);
-  s.allRaw = join(s.allRaw, text);
-  s.all = norm(s.allRaw);
+  recent = recent.concat(toks(text)).slice(-300);
+  recentAt = now;
   lastCommit = { n, at: now };
   addText(text, s.lang);
 }
@@ -1125,8 +1167,10 @@ function watchdog() {
   if (!listening || !s || !r || s.stopping || !s.interim) return;
   const idle = Date.now() - s.changed;
   const units = CJK.test(s.interim) ? s.interim.length * 2.5 : s.interim.length;
-  const pause = IS_IOS ? 1100 : 2200;
-  if (idle > pause || (units > 150 && idle > 650) || units > 320) {
+  const stalled = IS_IOS
+    ? (idle > 1100 || (units > 150 && idle > 650) || units > 320)
+    : (idle > 4000 || units > 600);
+  if (stalled) {
     s.stopping = true;
     try { r.stop(); } catch (_) {}
     setTimeout(() => { if (rec === r) { try { r.abort(); } catch (_) {} } }, 1800);
@@ -1246,6 +1290,7 @@ function doClear() {
   segEls.clear();
   $('transcript').textContent = '';
   lastCommit = { n:'', at:0 };
+  recent = []; recentAt = 0;
   if (sess) { sess.finals = []; sess.allRaw = ''; sess.all = ''; }
   store.del(K_SEG);
   hideBanner('old');
