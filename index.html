@@ -1,0 +1,1376 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>會議即時翻譯</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  --bg:#DDE2E6; --paper:#F3F5F6; --field:#FFFFFF;
+  --ink:#1A2128; --ink-2:#4F5A64; --ink-3:#7B8690; --rule:#C3CAD0;
+  --run:#1D8549; --run-soft:rgba(29,133,73,.22);
+  --warn:#8F5E00; --warn-lamp:#D99A00; --warn-soft:rgba(217,154,0,.17);
+  --alarm:#B3322A; --alarm-soft:rgba(179,50,42,.12);
+  --start:#1C7642; --start-edge:#11502B; --stop:#28323B; --stop-edge:#10161B; --stop-mark:#E8574C; --on-btn:#FFFFFF;
+  --focus:#2563A8; --scrim:rgba(18,24,30,.45); --lift:0 -10px 36px rgba(17,24,31,.18);
+  --tr-size:21px;
+  --f-ui:"Barlow","PingFang TC","Noto Sans TC","Noto Sans CJK TC","Microsoft JhengHei","Heiti TC",system-ui,sans-serif;
+  --f-cond:"Barlow Semi Condensed","Barlow","PingFang TC","Noto Sans TC","Noto Sans CJK TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#1A1F24; --paper:#21272D; --field:#283037;
+    --ink:#E5E9EC; --ink-2:#A0AAB3; --ink-3:#6E7984; --rule:#353E46;
+    --run:#3DBE78; --run-soft:rgba(61,190,120,.22);
+    --warn:#E3AA33; --warn-lamp:#E3AA33; --warn-soft:rgba(227,170,51,.15);
+    --alarm:#F06A5F; --alarm-soft:rgba(240,106,95,.15);
+    --start:#22844B; --start-edge:#155A32; --stop:#3A444E; --stop-edge:#232A31; --stop-mark:#F06A5F;
+    --focus:#76AEEA; --scrim:rgba(0,0,0,.55); --lift:0 -10px 36px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#1A1F24; --paper:#21272D; --field:#283037;
+  --ink:#E5E9EC; --ink-2:#A0AAB3; --ink-3:#6E7984; --rule:#353E46;
+  --run:#3DBE78; --run-soft:rgba(61,190,120,.22);
+  --warn:#E3AA33; --warn-lamp:#E3AA33; --warn-soft:rgba(227,170,51,.15);
+  --alarm:#F06A5F; --alarm-soft:rgba(240,106,95,.15);
+  --start:#22844B; --start-edge:#155A32; --stop:#3A444E; --stop-edge:#232A31; --stop-mark:#F06A5F;
+  --focus:#76AEEA; --scrim:rgba(0,0,0,.55); --lift:0 -10px 36px rgba(0,0,0,.5);
+}
+*,*::before,*::after{ box-sizing: inherit; }
+html{ height:100%; background:var(--bg); scroll-padding-top: env(safe-area-inset-top, 0px); }
+body{
+  height:100%; margin:0; display:flex; flex-direction:column; overflow:hidden;
+  background:var(--bg); color:var(--ink);
+  font:400 16px/1.5 var(--f-ui); -webkit-text-size-adjust:100%;
+}
+button,select,textarea{ font:inherit; color:inherit; }
+button{ cursor:pointer; -webkit-tap-highlight-color:transparent; }
+:focus-visible{ outline:3px solid var(--focus); outline-offset:2px; }
+[hidden]{ display:none !important; }
+
+/* per-language glyphs: Latin from Barlow, the rest from the phone's own CJK fonts */
+[lang|="zh"]{ font-family:"Barlow","PingFang TC","Noto Sans TC","Noto Sans CJK TC","Microsoft JhengHei","Heiti TC",sans-serif; }
+[lang|="zh-Hans"],[lang="zh-CN"]{ font-family:"Barlow","PingFang SC","Noto Sans SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif; }
+[lang|="ja"]{ font-family:"Barlow","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Noto Sans CJK JP","Yu Gothic",sans-serif; }
+[lang|="ko"]{ font-family:"Barlow","Apple SD Gothic Neo","Noto Sans KR","Noto Sans CJK KR","Malgun Gothic",sans-serif; }
+[lang|="th"]{ font-family:"Thonburi","Noto Sans Thai","Leelawadee UI",sans-serif; }
+
+/* ---------- top status strip ---------- */
+.top{
+  flex:none; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:10px 16px; border-bottom:1px solid var(--rule); background:var(--bg);
+}
+.state{ display:flex; align-items:center; gap:13px; min-width:0; font:600 16px/1.2 var(--f-cond); }
+#statusText{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.queue{ font:500 14px/1.2 var(--f-cond); color:var(--warn); white-space:nowrap; }
+.lamp{
+  width:12px; height:12px; border-radius:50%; flex:none; background:var(--ink-3);
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,.28);
+  transition: box-shadow .15s ease, background-color .2s ease;
+}
+.lamp.run{ background:var(--run); box-shadow: inset 0 -2px 3px rgba(0,0,0,.2), 0 0 0 4px var(--run-soft); }
+.lamp.run.hearing{ box-shadow: inset 0 -2px 3px rgba(0,0,0,.2), 0 0 0 7px var(--run-soft); }
+.lamp.warn{ background:var(--warn-lamp); box-shadow: 0 0 0 4px var(--warn-soft); animation: flash 1.1s ease-in-out infinite; }
+.lamp.alarm{ background:var(--alarm); box-shadow: 0 0 0 4px var(--alarm-soft); }
+@keyframes flash{ 50%{ opacity:.3; } }
+.chip{
+  flex:none; display:inline-flex; align-items:center; gap:6px;
+  padding:8px 14px; border:1px solid var(--rule); border-radius:999px; background:var(--paper);
+  font:600 15px/1 var(--f-cond);
+}
+
+/* ---------- banner ---------- */
+.banner{
+  flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px;
+  padding:10px 16px; background:var(--warn-soft); border-bottom:1px solid var(--rule);
+  font-size:14px; line-height:1.5;
+}
+.banner[data-tone="alarm"]{ background:var(--alarm-soft); }
+.banner[data-tone="info"]{ background:var(--paper); }
+.banner p{ margin:0; flex:1 1 240px; }
+.banner-actions{ display:flex; gap:8px; margin-left:auto; }
+.banner button{
+  border:1px solid var(--rule); background:var(--paper); border-radius:8px;
+  padding:7px 12px; font:600 14px/1.2 var(--f-ui);
+}
+
+/* ---------- transcript ---------- */
+.stage{ flex:1; min-height:0; position:relative; display:flex; }
+#scroller{
+  flex:1; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+  background:var(--paper);
+}
+.inner{ max-width:720px; margin:0 auto; padding:18px 20px 28px; }
+
+.setup h1{ margin:6px 0 8px; font:600 30px/1.2 var(--f-ui); letter-spacing:.01em; }
+.lede{ margin:0 0 22px; color:var(--ink-2); max-width:34em; }
+.tips{ margin:26px 0 0; padding:0; list-style:none; border-top:1px solid var(--rule); }
+.tips li{ padding:10px 0; border-bottom:1px solid var(--rule); font-size:15px; line-height:1.5; color:var(--ink-2); }
+.fine{ margin:14px 0 0; font-size:13px; line-height:1.55; color:var(--ink-3); }
+
+.settings{ display:grid; gap:16px; }
+.field{ display:grid; gap:6px; }
+.field label,.field .label{ font:600 14px/1.2 var(--f-cond); color:var(--ink-2); }
+select,textarea{
+  width:100%; border:1px solid var(--rule); border-radius:10px; background-color:var(--field);
+  padding:11px 12px; font-size:16px; line-height:1.4;
+}
+select{
+  appearance:none; -webkit-appearance:none; padding-right:38px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%237B8690' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 14px center;
+}
+textarea{ resize:vertical; min-height:68px; }
+.hint{ margin:0; font-size:13px; line-height:1.5; color:var(--ink-3); }
+.seg-ctl{ display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--rule); border-radius:10px; overflow:hidden; }
+.seg-ctl button{ border:0; border-left:1px solid var(--rule); background:var(--field); padding:11px 0; font-size:15px; }
+.seg-ctl button:first-child{ border-left:0; }
+.seg-ctl button[aria-pressed="true"]{ background:var(--ink); color:var(--paper); font-weight:600; }
+
+.seg{ padding:2px 0 18px; }
+.seg .time{
+  margin:12px 0 6px; font:600 12px/1 var(--f-cond); color:var(--ink-3);
+  letter-spacing:.03em; font-variant-numeric:tabular-nums;
+}
+.seg .tr{ margin:0; font-size:var(--tr-size); line-height:1.5; font-weight:500; overflow-wrap:anywhere; }
+.seg .tr.filler{ color:var(--ink-3); }
+.seg .src{ margin:4px 0 0; font-size:calc(var(--tr-size) * .7); line-height:1.45; color:var(--ink-2); overflow-wrap:anywhere; }
+.hide-src .seg .src{ display:none; }
+.hide-src .seg.no-tr .src{ display:block; }
+.seg[data-status="off"] .src{ color:var(--ink); font-size:calc(var(--tr-size) * .86); }
+.seg .pending{ color:var(--ink-3); font-size:calc(var(--tr-size) * .72); font-weight:400; }
+.seg .retry{
+  border:1px solid var(--rule); border-radius:8px; background:var(--field);
+  padding:6px 12px; font:600 14px/1.3 var(--f-ui); color:var(--alarm); vertical-align:middle;
+}
+.seg .err{ font:400 14px/1.4 var(--f-ui); color:var(--ink-3); }
+
+.live{
+  margin-top:14px; padding:6px 0 6px 12px; border-left:3px solid var(--run);
+  color:var(--ink-2); font-size:calc(var(--tr-size) * .76); line-height:1.45; min-height:2.2em; overflow-wrap:anywhere;
+}
+.live .idle{ color:var(--ink-3); }
+
+.jump{
+  position:absolute; right:16px; bottom:14px;
+  border:1px solid var(--rule); background:var(--paper); color:var(--ink); border-radius:999px;
+  padding:9px 15px; font:600 14px/1 var(--f-cond); box-shadow:0 4px 16px rgba(0,0,0,.18);
+}
+
+/* ---------- control strip ---------- */
+.bottom{
+  flex:none; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px;
+  padding:12px; border-top:1px solid var(--rule); background:var(--bg);
+}
+.tbtn{
+  justify-self:start; min-height:44px; padding:0 12px; border:1px solid var(--rule); border-radius:10px;
+  background:transparent; font:600 15px/1 var(--f-cond); white-space:nowrap;
+}
+.tbtn-end{ justify-self:end; }
+.bottom .tbtn.is-idle{ visibility:hidden; }
+.push{
+  width:clamp(128px, 42vw, 210px); height:58px; padding:0 12px; border:0; border-radius:14px;
+  display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  background:var(--start); color:var(--on-btn); font:600 18px/1 var(--f-ui); letter-spacing:.06em;
+  box-shadow: inset 0 -4px 0 var(--start-edge);
+  transition: transform .06s ease;
+}
+.push:active{ transform:translateY(2px); box-shadow: inset 0 -2px 0 var(--start-edge); }
+.push.is-stop{ background:var(--stop); box-shadow: inset 0 -4px 0 var(--stop-edge); }
+.push.is-stop:active{ box-shadow: inset 0 -2px 0 var(--stop-edge); }
+.push.is-stop::before{ content:""; width:13px; height:13px; border-radius:2px; background:var(--stop-mark); }
+
+/* ---------- sheets ---------- */
+.backdrop{ position:fixed; inset:0; background:var(--scrim); z-index:20; }
+.sheet{
+  position:fixed; left:0; right:0; bottom:0; z-index:21; margin:0 auto; max-width:720px; max-height:88%;
+  overflow-y:auto; overscroll-behavior:contain;
+  background:var(--paper); border-radius:18px 18px 0 0; box-shadow:var(--lift);
+  padding:0 20px calc(22px + env(safe-area-inset-bottom, 0px));
+  animation: rise .2s ease-out;
+}
+@keyframes rise{ from{ transform:translateY(28px); opacity:.5; } }
+.sheet-head{
+  position:sticky; top:0; z-index:1; background:var(--paper);
+  display:flex; align-items:center; justify-content:space-between; padding:16px 0 12px;
+}
+.sheet-head h2{ margin:0; font:600 20px/1.2 var(--f-ui); }
+.link{ border:0; background:none; color:var(--focus); font:600 16px/1 var(--f-ui); padding:8px 2px; }
+.rows{ display:grid; border-top:1px solid var(--rule); margin:0 0 22px; }
+.row{
+  display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left;
+  border:0; border-bottom:1px solid var(--rule); background:none; padding:13px 0; font-size:16px; font-weight:500;
+}
+.row small{ font-size:13px; color:var(--ink-3); font-weight:400; }
+.row.danger{ color:var(--alarm); }
+.sheet .settings{ margin-bottom:16px; }
+.size-field{ margin-bottom:22px; }
+.sum-body{ font-size:16px; line-height:1.65; min-height:5em; padding:2px 0 12px; overflow-wrap:anywhere; }
+.sum-body .h{ margin:14px 0 4px; font-weight:600; }
+.sum-body .h:first-child{ margin-top:0; }
+.sum-body .li{ padding-left:1em; text-indent:-1em; margin:2px 0; }
+.sum-body .gap{ height:4px; }
+.sum-note{ margin:0 0 12px; font-size:14px; color:var(--ink-3); }
+.sheet-foot{ display:flex; flex-wrap:wrap; gap:8px; padding-top:12px; border-top:1px solid var(--rule); }
+
+.toast{
+  position:fixed; left:50%; transform:translateX(-50%); z-index:30;
+  bottom:calc(96px + env(safe-area-inset-bottom, 0px));
+  max-width:calc(100% - 32px); padding:10px 16px; border-radius:10px;
+  background:var(--ink); color:var(--paper); font-size:15px; line-height:1.45; box-shadow:0 6px 20px rgba(0,0,0,.22);
+}
+
+input.key{
+  width:100%; min-width:0; border:1px solid var(--rule); border-radius:10px; background-color:var(--field);
+  padding:11px 12px; font-size:16px; line-height:1.4;
+}
+.masked{ -webkit-text-security:disc; }
+.key-row{ display:flex; gap:8px; }
+.key-row button{ flex:none; border:1px solid var(--rule); border-radius:10px; background:var(--field); padding:0 16px; font:600 15px/1 var(--f-cond); }
+.key-row button:disabled{ opacity:.55; }
+.hint a{ color:var(--focus); }
+.hint.ok{ color:var(--run); }
+.hint.bad{ color:var(--alarm); }
+
+@media (max-width:359px){
+  .bottom .tbtn{ padding:0 8px; font-size:14px; }
+  .push{ font-size:17px; letter-spacing:.02em; }
+}
+@media (min-width:600px){
+  .inner{ padding:24px 28px 32px; }
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{ animation:none !important; transition:none !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="state">
+    <span id="lamp" class="lamp" aria-hidden="true"></span>
+    <span id="statusText">未開始</span>
+    <span id="queueText" class="queue" hidden></span>
+  </div>
+  <button id="langChip" class="chip" type="button"><span id="langText">英 → 繁中</span></button>
+</header>
+
+<div id="banner" class="banner" role="status" hidden>
+  <p id="bannerText"></p>
+  <div class="banner-actions">
+    <button id="bannerAct" type="button" hidden></button>
+    <button id="bannerClose" type="button">知道了</button>
+  </div>
+</div>
+
+<div class="stage">
+  <main id="scroller">
+    <div class="inner">
+      <section id="setup" class="setup">
+        <h1>會議即時翻譯</h1>
+        <p class="lede">把手機放在說話的人附近，按下「開始聆聽」。聽到的內容會一句一句翻譯，顯示在這裡。</p>
+        <div id="settingsHome">
+          <form id="settings" class="settings" autocomplete="off">
+            <div class="field">
+              <label for="apiKey">Claude API 金鑰</label>
+              <div class="key-row">
+                <input id="apiKey" class="key masked" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sk-ant-…">
+                <button type="button" id="keyTest">測試</button>
+              </div>
+              <p class="hint">翻譯用你自己的金鑰，只存在這個瀏覽器裡。到 <a href="https://platform.claude.com" target="_blank" rel="noopener">Claude Console</a> 的 Settings → API keys 建立。</p>
+              <p id="keyStatus" class="hint" hidden></p>
+            </div>
+            <div class="field">
+              <label for="srcSel">會議語言</label>
+              <select id="srcSel"></select>
+            </div>
+            <div class="field">
+              <label for="tgtSel">翻譯成</label>
+              <select id="tgtSel"></select>
+            </div>
+            <div class="field">
+              <label for="ctx">會議主題與專有名詞</label>
+              <textarea id="ctx" rows="2" placeholder="例：產品型號、客戶名稱、同事的英文名字、常用縮寫"></textarea>
+              <p class="hint">選填。寫得越具體，專有名詞翻得越準。</p>
+            </div>
+          </form>
+        </div>
+        <ul class="tips">
+          <li>iPhone 用 Safari、Android 用 Chrome 開啟這個頁面。</li>
+          <li>不要連藍牙耳機：手機會改用耳機上的麥克風，收不到會議室的聲音。</li>
+          <li>螢幕要保持開著。鎖定螢幕或切到其他 App 會暫停，回到這頁會自動接續。</li>
+          <li>部分 Android 手機每次重新收音會有提示音，開會前先把音量調低。</li>
+        </ul>
+        <p class="fine">語音由手機內建的辨識服務轉成文字，再用你的 API 金鑰交給 Claude 翻譯。金鑰只存在這個瀏覽器裡。機密會議請先確認公司規定。</p>
+      </section>
+      <div id="transcript"></div>
+      <div id="live" class="live" hidden><span id="liveText"></span></div>
+    </div>
+  </main>
+  <button id="jump" class="jump" type="button" hidden>跳到最新</button>
+</div>
+
+<footer class="bottom">
+  <button id="srcToggle" class="tbtn" type="button">隱藏原文</button>
+  <button id="push" class="push" type="button">開始聆聽</button>
+  <button id="menuBtn" class="tbtn tbtn-end" type="button">選單</button>
+</footer>
+
+<div id="backdrop" class="backdrop" hidden></div>
+
+<section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="sheet-head"><h2 id="sheetTitle">選單</h2><button type="button" class="link" data-close>完成</button></div>
+  <div class="rows">
+    <button type="button" id="actSummary" class="row">會議摘要<small>整理重點、決議與待辦事項</small></button>
+    <button type="button" id="actCopy" class="row">複製全文</button>
+    <button type="button" id="actDownload" class="row">下載文字檔</button>
+  </div>
+  <div id="settingsSheet"></div>
+  <div class="field size-field">
+    <span class="label" id="sizeLabel">字級</span>
+    <div class="seg-ctl" role="group" aria-labelledby="sizeLabel">
+      <button type="button" data-size="18">小</button>
+      <button type="button" data-size="21">中</button>
+      <button type="button" data-size="24">大</button>
+      <button type="button" data-size="30">特大</button>
+    </div>
+  </div>
+  <div class="rows">
+    <button type="button" id="actClear" class="row danger">清除紀錄</button>
+  </div>
+</section>
+
+<section id="sumSheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sumTitle" hidden>
+  <div class="sheet-head"><h2 id="sumTitle">會議摘要</h2><button type="button" class="link" data-close>關閉</button></div>
+  <p id="sumNote" class="sum-note" hidden></p>
+  <div id="sumBody" class="sum-body"></div>
+  <div class="sheet-foot">
+    <button type="button" id="sumStop" class="tbtn">停止</button>
+    <button type="button" id="sumRedo" class="tbtn" hidden>重新整理</button>
+    <button type="button" id="sumCopy" class="tbtn" hidden>複製摘要</button>
+  </div>
+</section>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id);
+
+/* ================= languages ================= */
+const SRC = [
+  { code:'en-US', en:'English', label:'英文（美式）',   short:'英',   name:'英文' },
+  { code:'en-GB', en:'English', label:'英文（英式）',   short:'英',   name:'英文' },
+  { code:'en-IN', en:'English', label:'英文（印度）',   short:'英',   name:'英文' },
+  { code:'en-SG', en:'English', label:'英文（新加坡）', short:'英',   name:'英文' },
+  { code:'ja-JP', en:'Japanese', label:'日文',          short:'日',   name:'日文' },
+  { code:'ko-KR', en:'Korean', label:'韓文',          short:'韓',   name:'韓文' },
+  { code:'de-DE', en:'German', label:'德文',          short:'德',   name:'德文' },
+  { code:'fr-FR', en:'French', label:'法文',          short:'法',   name:'法文' },
+  { code:'es-ES', en:'Spanish', label:'西班牙文',      short:'西',   name:'西班牙文' },
+  { code:'vi-VN', en:'Vietnamese', label:'越南文',        short:'越',   name:'越南文' },
+  { code:'th-TH', en:'Thai', label:'泰文',          short:'泰',   name:'泰文' },
+  { code:'id-ID', en:'Indonesian', label:'印尼文',        short:'印尼', name:'印尼文' },
+  { code:'zh-TW', en:'Chinese (Taiwan Mandarin)', label:'中文（台灣）',   short:'中',   name:'中文' },
+  { code:'zh-CN', en:'Chinese (Mandarin)', label:'中文（中國）',   short:'中',   name:'中文' },
+];
+const TGT = [
+  { code:'zh-Hant-TW', en:'Traditional Chinese (Taiwan)', label:'繁體中文（台灣）', short:'繁中', name:'繁體中文（台灣用語）', cjk:true },
+  { code:'en', en:'English',         label:'英文',             short:'英',   name:'英文',               cjk:false },
+  { code:'ja', en:'Japanese',         label:'日文',             short:'日',   name:'日文',               cjk:true },
+  { code:'zh-Hans-CN', en:'Simplified Chinese', label:'簡體中文',         short:'簡中', name:'簡體中文',           cjk:true },
+  { code:'ko', en:'Korean',         label:'韓文',             short:'韓',   name:'韓文',               cjk:false },
+  { code:'vi', en:'Vietnamese',         label:'越南文',           short:'越',   name:'越南文',             cjk:false },
+];
+const srcInfo = (c) => SRC.find(l => l.code === c) || SRC[0];
+const tgtInfo = (c) => TGT.find(l => l.code === c) || TGT[0];
+
+const MSG = {
+  unsupported: '這個瀏覽器不支援語音辨識。iPhone 請用 Safari、Android 請用 Chrome 開啟這個頁面（LINE、Facebook 裡的瀏覽器通常不行）。',
+  micBlocked: '無法使用麥克風。請允許這個網站使用麥克風：iPhone 點 Safari 網址列左側的選單 → 網站設定 → 麥克風 → 允許；Android 點 Chrome 網址列左側的圖示 → 權限 → 麥克風；電腦版 Chrome 點網址列左側的圖示開啟麥克風。如果是在 LINE 等 App 裡開啟，請改用 Safari 或 Chrome。',
+  serviceBlocked: '手機的語音辨識服務無法使用。iPhone 請到「設定 → 一般 → 鍵盤」開啟「啟用聽寫」，並確認 Safari 允許麥克風，然後重新整理這頁。',
+  interrupted: '語音辨識被系統中斷了。點「繼續聆聽」接著聽。',
+  noAudio: '收不到麥克風的聲音。請確認沒有其他 App 正在使用麥克風（例如通話或錄音），也沒有連著藍牙耳機。',
+  unstable: '語音辨識沒辦法持續運作。請重新整理這頁再試；iPhone 請用 Safari，Android 請用 Chrome。',
+  network: '網路不穩，語音辨識停止了。網路恢復後點「繼續聆聽」。',
+};
+
+/* ================= storage ================= */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (_) {} },
+};
+const K_SET = 'meeting-translator:settings';
+const K_SEG = 'meeting-translator:segments';
+const SIZES = [18, 21, 24, 30];
+const DEFAULTS = { src:'en-US', tgt:'zh-Hant-TW', ctx:'工業電腦、工業自動化（工控）', size:21, showSrc:true };
+
+const settings = Object.assign({}, DEFAULTS, store.get(K_SET, {}) || {});
+if (!SRC.some(l => l.code === settings.src)) settings.src = DEFAULTS.src;
+if (!TGT.some(l => l.code === settings.tgt)) settings.tgt = DEFAULTS.tgt;
+if (!SIZES.includes(settings.size)) settings.size = DEFAULTS.size;
+if (typeof settings.ctx !== 'string') settings.ctx = DEFAULTS.ctx;
+settings.showSrc = settings.showSrc !== false;
+
+let segments = [];
+{
+  const saved = store.get(K_SEG, []);
+  if (Array.isArray(saved)) segments = saved.filter(s => s && typeof s.src === 'string' && s.src && typeof s.t === 'number');
+}
+let seq = segments.reduce((m, s) => Math.max(m, s.id | 0), 0);
+segments.forEach(s => {
+  if (!s.id) s.id = ++seq;
+  if (!s.srcLang) s.srcLang = settings.src;
+  if (!s.tgt) s.tgt = settings.tgt;
+  if (typeof s.tr !== 'string') s.tr = '';
+  if (s.status === 'queued' || s.status === 'sending') { s.status = 'error'; s.err = '翻譯未完成，點一下重試'; }
+});
+
+let saveT = 0;
+function saveSegsNow() { clearTimeout(saveT); store.set(K_SEG, segments.map(({ ctl, dead, ...rest }) => rest)); }
+function saveSegs() { clearTimeout(saveT); saveT = setTimeout(saveSegsNow, 400); }
+let setT = 0;
+function saveSettings(later) {
+  clearTimeout(setT);
+  if (later) setT = setTimeout(() => store.set(K_SET, settings), 400);
+  else store.set(K_SET, settings);
+}
+
+/* ================= text helpers ================= */
+const CJK = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
+const clean = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+const norm = (t) => clean(t).toLowerCase().replace(/[.,!?;:'"“”‘’\u3002\uff0c\uff01\uff1f\uff1b\uff1a\u3001\u300c\u300d\u2026-]/g, '').replace(/\s+/g, ' ').trim();
+function join(a, b) {
+  a = clean(a); b = clean(b);
+  if (!a) return b;
+  if (!b) return a;
+  return (CJK.test(a.slice(-1)) || CJK.test(b[0])) ? a + b : a + ' ' + b;
+}
+/* remove a leading part of `raw` that normalizes to `prefixNorm`; null if raw doesn't start with it */
+function stripPrefix(raw, prefixNorm) {
+  if (!prefixNorm) return null;
+  const r = clean(raw);
+  if (!norm(r).startsWith(prefixNorm)) return null;
+  let i = 0;
+  while (i < r.length && norm(r.slice(0, i)).length < prefixNorm.length) i++;
+  return r.slice(i).replace(/^[\s.,!?;:\u3002\uff0c\uff01\uff1f\uff1b\uff1a\u3001\u2026-]+/, '').trim();
+}
+function fmtTime(t) {
+  const d = new Date(t);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function stamp() {
+  const d = new Date(), p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+}
+
+/* ================= UI helpers ================= */
+const scroller = $('scroller');
+let stick = true, scrollQueued = false;
+scroller.addEventListener('scroll', () => {
+  const near = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 72;
+  stick = near;
+  $('jump').hidden = near || !segments.length;
+}, { passive:true });
+function scheduleScroll() {
+  if (scrollQueued) return;
+  scrollQueued = true;
+  requestAnimationFrame(() => { scrollQueued = false; if (stick) scroller.scrollTop = scroller.scrollHeight; });
+}
+$('jump').addEventListener('click', () => { stick = true; scroller.scrollTo({ top: scroller.scrollHeight, behavior:'smooth' }); });
+
+let toastT = 0;
+function toast(text, ms) {
+  const t = $('toast');
+  t.textContent = text; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, ms || 2200);
+}
+
+let bannerKey = null;
+function showBanner({ key, tone, text, action }) {
+  bannerKey = key || null;
+  const b = $('banner');
+  b.dataset.tone = tone || 'warn';
+  $('bannerText').textContent = text;
+  const a = $('bannerAct');
+  if (action) { a.hidden = false; a.textContent = action.label; a.onclick = action.fn; }
+  else { a.hidden = true; a.onclick = null; }
+  b.hidden = false;
+}
+function hideBanner(key) {
+  if (key && bannerKey !== key) return;
+  $('banner').hidden = true; bannerKey = null;
+}
+$('bannerClose').addEventListener('click', () => hideBanner());
+
+function applySize() {
+  document.documentElement.style.setProperty('--tr-size', settings.size + 'px');
+  document.querySelectorAll('[data-size]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.size === settings.size)));
+}
+function applySrc() {
+  document.body.classList.toggle('hide-src', !settings.showSrc);
+  $('srcToggle').textContent = settings.showSrc ? '隱藏原文' : '顯示原文';
+}
+function applyLang() {
+  const s = srcInfo(settings.src), t = tgtInfo(settings.tgt);
+  $('langText').textContent = s.short + ' → ' + t.short;
+  $('langChip').setAttribute('aria-label', '語言設定：' + s.label + ' 翻成 ' + t.label);
+}
+
+/* ================= transcript rendering ================= */
+const segEls = new Map();
+function computeShowTime(i) {
+  const s = segments[i], p = segments[i - 1];
+  s.showTime = !p || fmtTime(p.t) !== fmtTime(s.t);
+}
+function renderSeg(seg) {
+  if (seg.dead) return;
+  let el = segEls.get(seg.id);
+  if (!el) {
+    el = document.createElement('article');
+    el.className = 'seg';
+    el.innerHTML = '<div class="time"></div><p class="tr"></p><p class="src"></p>';
+    segEls.set(seg.id, el);
+    $('transcript').appendChild(el);
+  }
+  const [time, tr, src] = el.children;
+  el.dataset.status = seg.status;
+  time.textContent = fmtTime(seg.t);
+  time.hidden = !seg.showTime;
+  tr.lang = tgtInfo(seg.tgt).code;
+  src.lang = seg.srcLang;
+  tr.textContent = '';
+  tr.classList.toggle('filler', seg.tr === '…');
+  if (seg.tr) tr.append(seg.tr);
+  if (seg.status === 'queued' || (seg.status === 'sending' && !seg.tr)) {
+    const p = document.createElement('span'); p.className = 'pending'; p.textContent = '翻譯中…'; tr.append(p);
+  } else if (seg.status === 'error') {
+    if (seg.tr) tr.append(' ');
+    if (seg.noRetry) {
+      const n = document.createElement('span'); n.className = 'err'; n.textContent = seg.err || '無法翻譯'; tr.append(n);
+    } else {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'retry'; b.textContent = seg.err || '翻譯失敗，點一下重試';
+      b.addEventListener('click', () => retry(seg));
+      tr.append(b);
+    }
+  }
+  tr.hidden = seg.status === 'off';
+  el.classList.toggle('no-tr', !seg.tr);
+  src.textContent = seg.src;
+}
+
+function syncLayout() {
+  const showSetup = segments.length === 0 && !listening;
+  $('setup').hidden = !showSetup;
+  $('srcToggle').classList.toggle('is-idle', segments.length === 0);
+  const form = $('settings');
+  const home = (!$('sheet').hidden || !showSetup) ? $('settingsSheet') : $('settingsHome');
+  if (form.parentNode !== home) home.appendChild(form);
+}
+
+function updateQueue() {
+  const waiting = segments.filter(x => x.status === 'queued').length;
+  const q = $('queueText');
+  const slow = backoffUntil > Date.now();
+  if (translatorState === 'ready' && (slow ? waiting > 0 : waiting > 1)) {
+    q.hidden = false;
+    q.textContent = (slow ? '翻譯稍候，' : '') + '待翻譯 ' + waiting;
+  } else {
+    q.hidden = true;
+  }
+}
+
+/* ================= translation (Claude API, your own key) ================= */
+const API_URL = 'https://api.anthropic.com/v1/messages';
+const MODEL_FAST = 'claude-haiku-4-5-20251001';
+const MODEL_SUMMARY = 'claude-sonnet-5-5';
+const K_KEY = 'meeting-translator:api-key';
+let apiKey = String(store.get(K_KEY, '') || '').trim();
+let translatorState = apiKey ? 'ready' : 'nokey';   // ready | nokey | off
+let offReason = '';
+let inflight = 0, backoffUntil = 0, backoffMs = 0, pumpT = 0, netWarned = false;
+const MAX_INFLIGHT = 2;
+
+async function callClaude({ model, system, user, maxTokens, onText, signal }) {
+  const body = { model, max_tokens: maxTokens, messages: [{ role:'user', content: user }], stream: true };
+  if (system) body.system = system;
+  let res;
+  try {
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (e) {
+    throw { kind: (e && e.name === 'AbortError') ? 'cancelled' : 'network' };
+  }
+  if (!res.ok) {
+    let type = '', message = '';
+    try { const j = await res.json(); type = (j && j.error && j.error.type) || ''; message = (j && j.error && j.error.message) || ''; } catch (_) {}
+    throw { kind: 'http', status: res.status, type, message };
+  }
+  let buf = '', text = '';
+  const eat = (chunk) => {
+    buf += chunk.split('\r').join('');
+    let cut;
+    while ((cut = buf.indexOf('\n\n')) >= 0) {
+      const block = buf.slice(0, cut);
+      buf = buf.slice(cut + 2);
+      let data = '';
+      block.split('\n').forEach(l => { if (l.indexOf('data:') === 0) data += l.slice(5).trim(); });
+      if (!data) continue;
+      let ev;
+      try { ev = JSON.parse(data); } catch (_) { continue; }
+      if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') {
+        text += ev.delta.text;
+        if (onText) onText(text);
+      } else if (ev.type === 'error') {
+        throw { kind: 'http', status: 529, type: (ev.error && ev.error.type) || '', message: (ev.error && ev.error.message) || '' };
+      }
+    }
+  };
+  try {
+    if (res.body && res.body.getReader) {
+      const reader = res.body.getReader(), dec = new TextDecoder();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        eat(dec.decode(value, { stream: true }));
+      }
+    } else {
+      eat(await res.text());
+    }
+    eat('\n\n');
+  } catch (e) {
+    if (e && e.kind) { e.text = text; throw e; }
+    throw { kind: (e && e.name === 'AbortError') ? 'cancelled' : 'network', text };
+  }
+  return text;
+}
+
+function classify(e) {
+  if (!e) return 'other';
+  if (e.kind === 'cancelled' || e.kind === 'network') return e.kind;
+  if (e.kind !== 'http') return 'other';
+  const m = String(e.message || '').toLowerCase();
+  if (e.status === 401) return 'auth';
+  if (e.status === 403) return 'forbidden';
+  if (/credit balance|billing|purchase credits|usage limit|spend limit/.test(m)) return 'credit';
+  if (e.status === 429) return 'rate';
+  if (e.status === 404 || e.type === 'not_found_error') return 'model';
+  if (e.status === 413 || /too long|too large/.test(m)) return 'toolong';
+  if (e.status >= 500) return 'server';
+  return 'other';
+}
+
+function addText(text, lang) {
+  text = clean(text);
+  if (!text) return;
+  const last = segments[segments.length - 1];
+  if (last && last.status === 'queued' && last.srcLang === lang && last.tgt === settings.tgt && (last.src.length + text.length) < 420) {
+    last.src = join(last.src, text);
+    renderSeg(last);
+  } else {
+    const seg = { id: ++seq, t: Date.now(), src: text, tr: '', status: translatorState === 'ready' ? 'queued' : 'off', srcLang: lang, tgt: settings.tgt };
+    segments.push(seg);
+    computeShowTime(segments.length - 1);
+    renderSeg(seg);
+    if (segments.length === 1) { syncLayout(); setStatus(status); }
+  }
+  saveSegs();
+  pump();
+  scheduleScroll();
+}
+
+function buildPrompt(seg) {
+  const s = srcInfo(seg.srcLang), t = tgtInfo(seg.tgt);
+  const idx = segments.indexOf(seg);
+  const prev = segments.slice(Math.max(0, idx - 3), Math.max(0, idx)).map(x => x.src).join('\n');
+  const ctx = settings.ctx.trim();
+  const style = t.code === 'zh-Hant-TW' ? ' Use Traditional Chinese wording as used in Taiwan, with full-width punctuation.' : (t.cjk ? ' Use full-width punctuation.' : '');
+  const system = [
+    'You are a live interpreter at a business meeting. Translate the [SEGMENT] from ' + s.en + ' into ' + t.en + '.',
+    'Rules:',
+    '- Output only the translation: no notes, quotes, labels, or the original text.',
+    '- The text comes from automatic speech recognition and may contain misheard words, missing punctuation or broken sentences. Infer the most plausible meaning from context, but never add anything that was not said.',
+    '- Natural, concise, spoken style.' + style,
+    "- Keep product model numbers, company names, people's names and acronyms (e.g. PLC, HMI, SCADA, OPC UA, MES, ERP, BOM, RMA, MOQ, ETA, KPI) as written; render industry terms the way practitioners in that language do.",
+    '- Drop filler words (um, uh, you know, like).',
+    '- If the segment has no real content (only noise or filler), output just "…".',
+  ].join('\n');
+  const user = [];
+  if (ctx) user.push('Meeting topic and key terms: ' + ctx, '');
+  if (prev) user.push('[PREVIOUS] (context only, do not translate):', prev, '');
+  user.push('[SEGMENT]:', seg.src);
+  return { system, user: user.join('\n') };
+}
+function cleanOut(t) {
+  let s = String(t || '').trim();
+  s = s.replace(/^(譯文|翻譯|translation)\s*[:\uff1a]\s*/i, '');
+  if (/^「[^「」]*」$/.test(s) || /^"[^"]*"$/.test(s) || /^“[^“”]*”$/.test(s)) s = s.slice(1, -1).trim();
+  return s;
+}
+
+function pump() {
+  clearTimeout(pumpT);
+  if (translatorState !== 'ready') { updateQueue(); return; }
+  const now = Date.now();
+  if (backoffUntil > now) { pumpT = setTimeout(pump, backoffUntil - now + 30); updateQueue(); return; }
+  while (inflight < MAX_INFLIGHT) {
+    const seg = segments.find(x => x.status === 'queued' && !(x.holdUntil > now));
+    if (!seg) break;
+    translate(seg);
+  }
+  let next = Infinity;
+  segments.forEach(x => { if (x.status === 'queued' && x.holdUntil > now) next = Math.min(next, x.holdUntil); });
+  if (next < Infinity) pumpT = setTimeout(pump, next - now + 30);
+  updateQueue();
+}
+
+async function translate(seg) {
+  seg.status = 'sending'; seg.err = ''; inflight++;
+  renderSeg(seg);
+  const ctl = new AbortController();
+  seg.ctl = ctl;
+  const p = buildPrompt(seg);
+  try {
+    const text = await callClaude({
+      model: MODEL_FAST, system: p.system, user: p.user, maxTokens: 600, signal: ctl.signal,
+      onText: (t) => { if (seg.dead) return; seg.tr = cleanOut(t); renderSeg(seg); scheduleScroll(); },
+    });
+    seg.tr = cleanOut(text) || '…';
+    seg.status = 'done';
+    backoffMs = 0;
+    if (netWarned) { netWarned = false; hideBanner('net'); }
+  } catch (e) {
+    apiFailed(e, seg);
+  } finally {
+    seg.ctl = null;
+    inflight = Math.max(0, inflight - 1);
+    renderSeg(seg);
+    saveSegs();
+    scheduleScroll();
+    pump();
+  }
+}
+
+function apiFailed(e, seg) {
+  const c = classify(e);
+  const partial = cleanOut((e && e.text) || '');
+  if (c === 'cancelled') { seg.status = 'error'; seg.err = '已取消，點一下重試'; return; }
+  if (c === 'auth' || c === 'forbidden' || c === 'credit' || c === 'model') { seg.status = 'off'; seg.tr = ''; translatorOff(c); return; }
+  if (c === 'rate') {
+    seg.status = 'queued'; seg.tr = '';
+    backoffMs = Math.min(60000, backoffMs ? backoffMs * 2 : 8000);
+    backoffUntil = Date.now() + backoffMs;
+    return;
+  }
+  if (c === 'toolong') { seg.status = 'error'; seg.tr = ''; seg.err = '這段太長，無法翻譯'; seg.noRetry = true; return; }
+  if (c === 'network') warnNet();
+  if ((c === 'server' || c === 'network') && !seg.tries) {
+    seg.tries = 1; seg.status = 'queued'; seg.tr = ''; seg.holdUntil = Date.now() + 2000;
+    return;
+  }
+  seg.status = 'error'; seg.tr = partial; seg.err = '翻譯中斷，點一下重試';
+}
+
+function warnNet() {
+  if (netWarned) return;
+  netWarned = true;
+  showBanner({ key:'net', tone:'warn', text:'連不上 Claude API。請確認網路；公司網路也可能擋住了 api.anthropic.com。聽到的原文會繼續記錄。' });
+}
+
+function retry(seg) {
+  if (seg.noRetry) return;
+  if (translatorState !== 'ready') { translatorOff(offReason || 'nokey', true); return; }
+  seg.status = 'queued'; seg.err = ''; seg.tr = ''; seg.tries = 0; seg.holdUntil = 0;
+  renderSeg(seg);
+  pump();
+}
+
+const OFF_TEXT = {
+  nokey: '還沒設定 Claude API 金鑰，目前只顯示原文。',
+  auth: 'API 金鑰無效，請重新設定。目前只顯示原文。',
+  forbidden: '這把 API 金鑰沒有使用權限，請到 Claude Console 確認。目前只顯示原文。',
+  credit: 'API 額度不足或已達用量上限。到 Claude Console 儲值或調整上限後，點「繼續翻譯」。',
+  model: '翻譯模型暫時無法使用，稍後點「繼續翻譯」再試。',
+};
+function translatorOff(reason, force) {
+  const same = !force && translatorState !== 'ready' && offReason === reason && bannerKey === 'tr';
+  translatorState = reason === 'nokey' ? 'nokey' : 'off';
+  offReason = reason;
+  segments.forEach(x => { if (x.status === 'queued') { x.status = 'off'; x.tr = ''; renderSeg(x); } });
+  updateQueue();
+  if (same) return;
+  const needsKey = reason === 'nokey' || reason === 'auth' || reason === 'forbidden';
+  showBanner({ key:'tr', tone:'warn', text: OFF_TEXT[reason] || OFF_TEXT.model,
+    action: needsKey ? { label:'設定金鑰', fn: openKeySettings } : { label:'繼續翻譯', fn: () => reenable(true) } });
+}
+function reenable(fromUser) {
+  if (!apiKey) { translatorOff('nokey', true); return; }
+  translatorState = 'ready'; offReason = ''; backoffUntil = 0; backoffMs = 0;
+  hideBanner('tr');
+  if (fromUser) segments.filter(x => x.status === 'off').slice(-30).forEach(x => { x.status = 'queued'; x.tries = 0; x.holdUntil = 0; renderSeg(x); });
+  pump();
+}
+function openKeySettings() {
+  openSheet('sheet');
+  requestAnimationFrame(() => {
+    const k = $('apiKey');
+    try { k.scrollIntoView({ block:'center' }); } catch (_) {}
+    try { k.focus({ preventScroll:true }); } catch (_) {}
+  });
+}
+
+const KEY_ERR = {
+  auth: '金鑰無效，請確認有完整複製（以 sk-ant- 開頭）。',
+  forbidden: '這把金鑰沒有使用權限。',
+  credit: 'API 額度不足，請先到 Claude Console 儲值。',
+  network: '連不上 Claude API，請確認網路；公司網路也可能擋住了 api.anthropic.com。',
+  rate: '請求太頻繁，稍後再試。',
+  model: '模型暫時無法使用，稍後再試。',
+  server: 'Claude API 暫時忙碌，稍後再試。',
+};
+function setKey(v) {
+  apiKey = String(v || '').trim();
+  if (apiKey) store.set(K_KEY, apiKey); else store.del(K_KEY);
+}
+function setKeyStatus(text, tone) {
+  const el = $('keyStatus');
+  el.textContent = text || '';
+  el.className = 'hint' + (tone ? ' ' + tone : '');
+  el.hidden = !text;
+}
+$('apiKey').addEventListener('change', (e) => {
+  const before = apiKey;
+  setKey(e.target.value);
+  if (apiKey === before) return;
+  setKeyStatus('');
+  if (apiKey) reenable(true); else translatorOff('nokey', true);
+});
+$('keyTest').addEventListener('click', async () => {
+  setKey($('apiKey').value);
+  if (!apiKey) { setKeyStatus('請先貼上金鑰。', 'bad'); return; }
+  const btn = $('keyTest');
+  btn.disabled = true;
+  setKeyStatus('測試中…');
+  try {
+    await callClaude({ model: MODEL_FAST, user: 'Reply with OK.', maxTokens: 5 });
+    setKeyStatus('金鑰可以使用。', 'ok');
+    if (translatorState !== 'ready') reenable(true);
+  } catch (e) {
+    setKeyStatus(KEY_ERR[classify(e)] || '測試失敗，請稍後再試。', 'bad');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ================= speech recognition ================= */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+const UA = navigator.userAgent || '';
+const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+
+let listening = false, rec = null, sess = null, status = 'idle';
+let restartT = 0, dogT = 0, hearT = 0;
+let fails = 0, netFails = 0, everHeard = false;
+let lastCommit = { n:'', at:0 };
+
+const STATUS_TEXT = {
+  idle: () => segments.length ? '已停止' : '未開始',
+  starting: '啟動中…',
+  listening: '聆聽中',
+  reconnecting: '重新連線中…',
+  paused: '已暫停，回到這頁會接續',
+  error: '已停止',
+};
+function setStatus(k, text) {
+  status = k;
+  $('lamp').className = 'lamp' + ({ listening:' run', starting:' warn', reconnecting:' warn', paused:' warn', error:' alarm' }[k] || '');
+  const t = text || STATUS_TEXT[k];
+  $('statusText').textContent = typeof t === 'function' ? t() : t;
+  const btn = $('push');
+  btn.textContent = listening ? '停止' : (segments.length ? '繼續聆聽' : '開始聆聽');
+  btn.classList.toggle('is-stop', listening);
+  renderLive();
+}
+function pulse() {
+  const l = $('lamp');
+  l.classList.add('hearing');
+  clearTimeout(hearT);
+  hearT = setTimeout(() => l.classList.remove('hearing'), 600);
+}
+function renderLive() {
+  const live = $('live'), lt = $('liveText');
+  live.hidden = !listening;
+  if (!listening) return;
+  const t = sess && sess.interim;
+  if (t) { lt.textContent = t; lt.className = ''; }
+  else {
+    lt.textContent = status === 'listening' ? '聆聽中…' : (status === 'paused' ? '已暫停' : '準備中…');
+    lt.className = 'idle';
+  }
+  live.lang = (sess && sess.lang) || settings.src;
+  scheduleScroll();
+}
+
+function startListening() {
+  listening = true; fails = 0; netFails = 0; everHeard = false;
+  hideBanner('mic');
+  setStatus('starting');
+  syncLayout();
+  spawn();
+  clearInterval(dogT);
+  dogT = setInterval(watchdog, 250);
+  wake(true);
+}
+
+function stopListening(asError) {
+  listening = false;
+  clearTimeout(restartT);
+  clearInterval(dogT);
+  if (rec) { try { rec.stop(); } catch (_) {} }
+  wake(false);
+  setStatus(asError ? 'error' : 'idle');
+  syncLayout();
+}
+
+function fatal(text, tone) {
+  stopListening(tone !== 'warn');
+  showBanner({ key:'mic', tone: tone || 'alarm', text });
+}
+
+function spawn() {
+  clearTimeout(restartT);
+  if (!listening) return;
+  if (document.hidden) { setStatus('paused'); return; }
+  if (rec) { const old = rec; rec = null; sess = null; try { old.abort(); } catch (_) {} }
+  let r;
+  try { r = new SR(); } catch (_) { fatal(MSG.unsupported); return; }
+  const s = { lang: settings.src, done: new Set(), finals: [], allRaw: '', all: '', interim: '', changed: Date.now(), heard: false, started: Date.now(), stopping: false, fatal: false, net: false };
+  r.lang = s.lang;
+  r.continuous = true;
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+  r.onstart = () => { if (rec === r && listening && status !== 'listening') setStatus('listening'); };
+  r.onresult = (e) => { if (rec === r) onResult(e, s); };
+  r.onerror = (e) => { if (rec === r) onError(e && e.error, s); };
+  r.onend = () => { if (rec === r) onEnd(s); };
+  rec = r; sess = s;
+  try { r.start(); }
+  catch (_) {
+    rec = null; sess = null; fails++;
+    if (fails >= 6) { fatal(MSG.unstable); return; }
+    restartT = setTimeout(spawn, 800);
+  }
+}
+
+function onResult(e, s) {
+  s.heard = true; everHeard = true; fails = 0; netFails = 0;
+  if (status !== 'listening') setStatus('listening');
+  const res = e.results;
+  let interim = '';
+  for (let i = 0; i < res.length; i++) {
+    if (s.done.has(i)) continue;
+    const r = res[i], alt = r && r[0];
+    if (!alt) continue;
+    if (r.isFinal) { s.done.add(i); commit(alt.transcript, s); }
+    else interim = join(interim, alt.transcript);
+  }
+  interim = visibleInterim(interim, s);
+  if (interim !== s.interim) { s.interim = interim; s.changed = Date.now(); }
+  renderLive();
+  pulse();
+}
+
+/* Some engines repeat text that was already committed (iOS keeps the whole session, some
+   Android builds send duplicate finals). Strip what we already have before showing/committing. */
+function visibleInterim(t, s) {
+  if (!t) return '';
+  if (s.all.length >= 8) { const r = stripPrefix(t, s.all); if (r !== null) return r; }
+  const last = s.finals[s.finals.length - 1];
+  if (last && last.length >= 8) { const r = stripPrefix(t, last); if (r !== null) return r; }
+  return clean(t);
+}
+
+function commit(raw, s) {
+  let text = clean(raw), n = norm(text);
+  if (!n) return;
+  const now = Date.now();
+  if (n === lastCommit.n && now - lastCommit.at < 4000) return;
+  if (s.all) {
+    if (n.length >= 12 && s.all.includes(n)) return;
+    const last = s.finals[s.finals.length - 1];
+    let rest = null;
+    if (s.all.length >= 8 && n.startsWith(s.all)) rest = stripPrefix(text, s.all);
+    else if (last && last.length >= 8 && n.startsWith(last)) rest = stripPrefix(text, last);
+    if (rest !== null) {
+      if (!rest) return;
+      text = rest; n = norm(text);
+      if (!n) return;
+    }
+  }
+  s.finals.push(n);
+  s.allRaw = join(s.allRaw, text);
+  s.all = norm(s.allRaw);
+  lastCommit = { n, at: now };
+  addText(text, s.lang);
+}
+
+function onError(code, s) {
+  switch (code) {
+    case 'no-speech':
+    case 'aborted':
+      return;
+    case 'network':
+      s.net = true; return;
+    case 'not-allowed':
+    case 'service-not-allowed':
+      s.fatal = true;
+      if (everHeard) fatal(MSG.interrupted, 'warn');
+      else fatal(code === 'service-not-allowed' && IS_IOS ? MSG.serviceBlocked : MSG.micBlocked);
+      return;
+    case 'audio-capture':
+      s.fatal = true; fatal(MSG.noAudio); return;
+    case 'language-not-supported':
+      s.fatal = true; fatal('這支手機的語音辨識不支援「' + srcInfo(s.lang).label + '」，請在選單換一個會議語言。'); return;
+    default:
+      return;
+  }
+}
+
+function onEnd(s) {
+  const leftover = s.interim;
+  s.interim = '';
+  if (leftover) commit(leftover, s);
+  rec = null; sess = null;
+  if (!listening || s.fatal) { if (!listening && status !== 'error') setStatus('idle'); else renderLive(); return; }
+  if (document.hidden) { setStatus('paused'); return; }
+  let delay = 120;
+  if (s.net) {
+    netFails++;
+    if (netFails > 12) { fatal(MSG.network, 'warn'); return; }
+    delay = Math.min(8000, 1000 * netFails);
+    setStatus('reconnecting', '網路不穩，重新連線中…');
+  } else if (!s.heard && Date.now() - s.started < 1500) {
+    fails++;
+    if (fails >= 6) { fatal(MSG.unstable); return; }
+    delay = fails > 2 ? 1200 : 300;
+  }
+  renderLive();
+  restartT = setTimeout(spawn, delay);
+}
+
+/* Close a sentence at natural pauses so translations arrive while people are still talking. */
+function watchdog() {
+  const s = sess, r = rec;
+  if (!listening || !s || !r || s.stopping || !s.interim) return;
+  const idle = Date.now() - s.changed;
+  const units = CJK.test(s.interim) ? s.interim.length * 2.5 : s.interim.length;
+  const pause = IS_IOS ? 1100 : 2200;
+  if (idle > pause || (units > 150 && idle > 650) || units > 320) {
+    s.stopping = true;
+    try { r.stop(); } catch (_) {}
+    setTimeout(() => { if (rec === r) { try { r.abort(); } catch (_) {} } }, 1800);
+    setTimeout(() => { if (rec === r) onEnd(s); }, 3500);
+  }
+}
+
+function restartRecognition() {
+  if (!listening) return;
+  if (rec) { try { rec.abort(); } catch (_) {} }
+  else spawn();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { saveSegsNow(); return; }
+  if (listening) {
+    wake(true);
+    if (!rec) { fails = 0; setStatus('starting'); spawn(); }
+  }
+});
+window.addEventListener('pagehide', saveSegsNow);
+
+/* keep the screen on while listening */
+let wakeLock = null, wakeWarned = false;
+async function wake(on) {
+  if (!on) {
+    const w = wakeLock; wakeLock = null;
+    if (w) { try { await w.release(); } catch (_) {} }
+    return;
+  }
+  if (wakeLock) return;
+  if (!('wakeLock' in navigator)) { warnWake(); return; }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (_) { warnWake(); }
+}
+function warnWake() {
+  if (wakeWarned) return;
+  wakeWarned = true;
+  toast('螢幕可能會自動關閉。開會時可把手機的「自動鎖定」時間調長。', 5000);
+}
+
+/* ================= sheets, export, summary ================= */
+let openSheetId = null, lastFocus = null;
+function openSheet(id) {
+  if (openSheetId && openSheetId !== id) closeSheet(true);
+  lastFocus = document.activeElement;
+  openSheetId = id;
+  $(id).hidden = false;
+  $('backdrop').hidden = false;
+  if (id === 'sheet') syncLayout();
+  const c = $(id).querySelector('[data-close]');
+  if (c) { try { c.focus({ preventScroll:true }); } catch (_) { c.focus(); } }
+}
+function closeSheet(silent) {
+  if (!openSheetId) return;
+  const id = openSheetId;
+  openSheetId = null;
+  $(id).hidden = true;
+  $('backdrop').hidden = true;
+  if (id === 'sumSheet' && sumCtl) sumCtl.abort();
+  syncLayout();
+  if (!silent && lastFocus && lastFocus.focus) { try { lastFocus.focus({ preventScroll:true }); } catch (_) {} }
+}
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => closeSheet()));
+$('backdrop').addEventListener('click', () => closeSheet());
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openSheetId) closeSheet(); });
+
+function buildExport() {
+  const s = srcInfo(settings.src), t = tgtInfo(settings.tgt);
+  const head = '會議即時翻譯紀錄\n匯出時間：' + new Date().toLocaleString('zh-TW', { hour12:false }) + '\n語言：' + s.label + ' → ' + t.label + '\n\n';
+  return head + segments.map(x => '[' + fmtTime(x.t) + ']\n' + (x.tr && x.tr !== '…' ? x.tr + '\n' : '') + x.src + '\n').join('\n');
+}
+async function copyText(text) {
+  let ok = false;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    ok = document.execCommand('copy');
+    ta.remove();
+  } catch (_) { ok = false; }
+  if (ok) return true;
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) { return false; }
+}
+$('actCopy').addEventListener('click', async () => {
+  if (!segments.length) { toast('還沒有內容可以複製'); return; }
+  const ok = await copyText(buildExport());
+  toast(ok ? '已複製全文' : '無法自動複製，請改用「下載文字檔」');
+});
+$('actDownload').addEventListener('click', () => {
+  if (!segments.length) { toast('還沒有內容可以下載'); return; }
+  try {
+    const blob = new Blob(['\ufeff' + buildExport()], { type:'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'meeting-translation-' + stamp() + '.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (_) {
+    toast('無法下載，可改用「複製全文」');
+  }
+});
+
+let clearArmed = 0;
+function doClear() {
+  segments.forEach(s => { s.dead = true; if (s.ctl) s.ctl.abort(); });
+  segments = [];
+  segEls.clear();
+  $('transcript').textContent = '';
+  lastCommit = { n:'', at:0 };
+  if (sess) { sess.finals = []; sess.allRaw = ''; sess.all = ''; }
+  store.del(K_SEG);
+  hideBanner('old');
+  $('jump').hidden = true;
+  updateQueue();
+  syncLayout();
+  setStatus(status);
+}
+$('actClear').addEventListener('click', () => {
+  const btn = $('actClear');
+  if (Date.now() - clearArmed > 3000) {
+    clearArmed = Date.now();
+    btn.textContent = '再按一次確認清除';
+    setTimeout(() => { if (Date.now() - clearArmed >= 3000) btn.textContent = '清除紀錄'; }, 3100);
+    return;
+  }
+  clearArmed = 0;
+  btn.textContent = '清除紀錄';
+  doClear();
+  closeSheet();
+  toast('紀錄已清除');
+});
+
+let sumCtl = null, sumText = '';
+function renderSummary(text) {
+  sumText = String(text || '');
+  const body = $('sumBody');
+  body.textContent = '';
+  sumText.split('\n').forEach(line => {
+    const t = line.trim();
+    const div = document.createElement('div');
+    if (!t) div.className = 'gap';
+    else if (!/^[・•\-*]/.test(t) && t.length <= 24 && !/[\u3002\uff0c.,!?\uff01\uff1f]$/.test(t)) { div.className = 'h'; div.textContent = t.replace(/[:\uff1a]$/, ''); }
+    else { div.className = 'li'; div.textContent = t; }
+    body.appendChild(div);
+  });
+}
+function setNote(t) { const n = $('sumNote'); n.textContent = t || ''; n.hidden = !t; }
+function summaryPrompt(transcript, cut) {
+  const t = tgtInfo(settings.tgt), ctx = settings.ctx.trim();
+  const out = ['以下是一場會議的逐字稿，由語音辨識自動產生，可能有錯字、同音誤認或斷句錯誤，請依上下文理解。' + (cut ? '（會議較長，這裡只有後段。）' : '')];
+  if (ctx) out.push('會議主題與專有名詞：' + ctx);
+  out.push(
+    '',
+    '請用' + t.name + '為一位在旁聆聽、沒有發言的與會者寫會議摘要，段落標題也用' + t.name + '。依序分成四段：重點（3 到 7 點）、決議、待辦事項（有提到負責人或期限就寫上）、待釐清的問題。',
+    '每段標題獨立一行；每個要點一行，以「・」開頭；某段沒有內容就寫「無」。只根據逐字稿，不要臆測，也不要使用 # 或 * 等 Markdown 符號。',
+    '',
+    '逐字稿：',
+    transcript
+  );
+  return out.join('\n');
+}
+const SUM_ERR = {
+  rate: '請求太頻繁，稍後再試。',
+  network: '連不上 Claude API，請確認網路。',
+  auth: 'API 金鑰無效，請到選單重新設定。',
+  forbidden: '這把 API 金鑰沒有使用權限。',
+  credit: 'API 額度不足或已達用量上限。',
+  toolong: '內容太長，無法整理。',
+};
+async function runSummary() {
+  if (openSheetId !== 'sumSheet') openSheet('sumSheet');
+  const showButtons = (running) => {
+    $('sumStop').hidden = !running;
+    $('sumRedo').hidden = running;
+    $('sumCopy').hidden = running || !sumText.trim();
+  };
+  if (translatorState !== 'ready') {
+    renderSummary('');
+    setNote(apiKey ? '翻譯服務目前暫停，請先處理畫面上方的提示。' : '摘要需要 Claude API 金鑰，請先在選單設定。');
+    showButtons(false); $('sumRedo').hidden = true;
+    return;
+  }
+  const items = segments.filter(x => clean(x.src));
+  if (!items.length) {
+    renderSummary(''); setNote('還沒有內容。開始聆聽之後再來整理。'); showButtons(false); $('sumRedo').hidden = true;
+    return;
+  }
+  const enc = new TextEncoder(), LIMIT = 180000, lines = [];
+  let used = 0;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const line = '[' + fmtTime(items[i].t) + '] ' + items[i].src;
+    const b = enc.encode(line).length + 1;
+    if (used + b > LIMIT) break;
+    used += b; lines.unshift(line);
+  }
+  const cut = lines.length < items.length;
+  if (sumCtl) sumCtl.abort();
+  const ctl = new AbortController();
+  sumCtl = ctl;
+  renderSummary('');
+  setNote('整理中…');
+  showButtons(true);
+  const prompt = summaryPrompt(lines.join('\n'), cut);
+  const run = (model) => callClaude({ model, user: prompt, maxTokens: 2000, signal: ctl.signal,
+    onText: (t) => { renderSummary(t); setNote('撰寫中…'); } });
+  try {
+    let text;
+    try { text = await run(MODEL_SUMMARY); }
+    catch (e) { if (classify(e) === 'model') text = await run(MODEL_FAST); else throw e; }
+    renderSummary(text);
+    setNote(cut ? '會議太長，只整理了後段內容。' : '');
+  } catch (e) {
+    const c = classify(e);
+    renderSummary((e && e.text) || '');
+    setNote(c === 'cancelled' ? '已停止。' : (SUM_ERR[c] || '整理失敗，點「重新整理」再試一次。'));
+    if (c === 'auth' || c === 'forbidden' || c === 'credit') translatorOff(c);
+  } finally {
+    if (sumCtl === ctl) sumCtl = null;
+    showButtons(false);
+  }
+}
+$('actSummary').addEventListener('click', () => runSummary(false));
+$('sumRedo').addEventListener('click', () => runSummary(true));
+$('sumStop').addEventListener('click', () => { if (sumCtl) sumCtl.abort(); });
+$('sumCopy').addEventListener('click', async () => {
+  const ok = await copyText(sumText);
+  toast(ok ? '已複製摘要' : '無法自動複製，請長按文字手動複製');
+});
+
+/* ================= controls ================= */
+$('push').addEventListener('click', () => {
+  if (listening) { stopListening(); return; }
+  if (!SR) { showBanner({ key:'mic', tone:'alarm', text: MSG.unsupported }); return; }
+  startListening();
+  if (translatorState === 'nokey') translatorOff('nokey', true);
+});
+$('srcToggle').addEventListener('click', () => { settings.showSrc = !settings.showSrc; applySrc(); saveSettings(); scheduleScroll(); });
+$('menuBtn').addEventListener('click', () => openSheet('sheet'));
+$('langChip').addEventListener('click', () => {
+  openSheet('sheet');
+  requestAnimationFrame(() => { try { $('srcSel').scrollIntoView({ block:'center' }); } catch (_) {} });
+});
+document.querySelectorAll('[data-size]').forEach(b => b.addEventListener('click', () => {
+  settings.size = +b.dataset.size; applySize(); saveSettings(); scheduleScroll();
+}));
+$('settings').addEventListener('submit', (e) => e.preventDefault());
+$('srcSel').addEventListener('change', (e) => {
+  settings.src = e.target.value; saveSettings(); applyLang();
+  if (listening) { hideBanner('mic'); restartRecognition(); }
+});
+$('tgtSel').addEventListener('change', (e) => { settings.tgt = e.target.value; saveSettings(); applyLang(); });
+$('ctx').addEventListener('input', (e) => { settings.ctx = e.target.value; saveSettings(true); });
+
+/* ================= boot ================= */
+(function boot() {
+  const srcSel = $('srcSel'), tgtSel = $('tgtSel');
+  SRC.forEach(l => srcSel.add(new Option(l.label, l.code)));
+  TGT.forEach(l => tgtSel.add(new Option(l.label, l.code)));
+  srcSel.value = settings.src;
+  tgtSel.value = settings.tgt;
+  $('ctx').value = settings.ctx;
+  applySize(); applySrc(); applyLang();
+  segments.forEach((s, i) => { computeShowTime(i); renderSeg(s); });
+  syncLayout();
+  setStatus('idle');
+  if (!SR) showBanner({ key:'mic', tone:'alarm', text: MSG.unsupported });
+  else if (segments.length && Date.now() - segments[segments.length - 1].t > 3 * 3600 * 1000) {
+    showBanner({ key:'old', tone:'info', text:'上一場會議的紀錄還在這裡。', action:{ label:'清除，開始新會議', fn: () => { doClear(); toast('紀錄已清除'); } } });
+  }
+  $('apiKey').value = apiKey;
+  if (segments.length) requestAnimationFrame(() => { scroller.scrollTop = scroller.scrollHeight; });
+})();
+})();
+</script>
+</body>
+</html>
