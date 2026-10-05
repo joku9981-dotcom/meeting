@@ -232,6 +232,7 @@ textarea{ resize:vertical; min-height:68px; }
 .sum-note{ margin:0 0 12px; font-size:14px; color:var(--ink-3); }
 .sheet-foot{ display:flex; flex-wrap:wrap; gap:8px; padding-top:12px; border-top:1px solid var(--rule); }
 
+.ver{ margin:-8px 0 0; font-size:13px; color:var(--ink-3); text-align:center; }
 .toast{
   position:fixed; left:50%; transform:translateX(-50%); z-index:30;
   bottom:calc(96px + env(safe-area-inset-bottom, 0px));
@@ -357,6 +358,7 @@ input.key{
   <div class="rows">
     <button type="button" id="actClear" class="row danger">清除紀錄</button>
   </div>
+  <p class="ver">版本 1.1</p>
 </section>
 
 <section id="sumSheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sumTitle" hidden>
